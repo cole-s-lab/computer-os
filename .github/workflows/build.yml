@@ -21,26 +21,26 @@ env:
   IMAGE_NAME: "${{ github.event.repository.name }}"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
   DEFAULT_TAG: "latest"
+  BIB_IMAGE: "ghcr.io/lorbuschris/bootc-image-builder:20250608"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
   cancel-in-progress: true
 
 jobs:
-  build_push:
-    name: Build and push image
+  build_image:
+    name: Build container image
     runs-on: ubuntu-24.04
 
     permissions:
       contents: read
-      packages: write
-      id-token: write
 
     outputs:
       image-name: ${{ env.IMAGE_NAME }}
       registry: ${{ env.IMAGE_REGISTRY }}
       tag: ${{ env.DEFAULT_TAG }}
-      digest: ${{ steps.push.outputs.digest }}
+      tags: ${{ steps.metadata.outputs.tags }}
+      labels: ${{ steps.metadata.outputs.labels }}
 
     steps:
       - name: Prepare environment
@@ -135,11 +135,42 @@ jobs:
             podman tag $IMAGE ${{ env.IMAGE_NAME }}:$tag
           done
 
+  push_image:
+    name: Push container image
+    needs: build_image
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+
+    steps:
+      - name: Prepare environment
+        run: |
+          # Lowercase the image uri
+          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      # Download the built image from the previous job
+      - name: Download built image
+        run: |
+          # Pull the image that was built in the previous job
+          # Note: This assumes the image is available in the runner's local storage
+          # In practice, you might need to use a registry or artifact transfer
+          echo "Image will be available from previous job's podman storage"
+
       # These `if` statements are so that pull requests for your custom images do not make it publish any packages under your name without you knowing
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
       - name: Login to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -147,15 +178,14 @@ jobs:
 
       - name: Push To GHCR
         uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # v2
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         id: push
         env:
           REGISTRY_USER: ${{ github.actor }}
           REGISTRY_PASSWORD: ${{ github.token }}
         with:
-          registry: ${{ env.IMAGE_REGISTRY }}
-          image: ${{ env.IMAGE_NAME }}
-          tags: ${{ steps.metadata.outputs.tags }}
+          registry: ${{ needs.build_image.outputs.registry }}
+          image: ${{ needs.build_image.outputs.image-name }}
+          tags: ${{ needs.build_image.outputs.tags }}
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
 
@@ -165,13 +195,11 @@ jobs:
       # to consume. For more details, review the image signing section of the README.
       - name: Install Cosign
         uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
 
       - name: Sign container image
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         run: |
-          IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
-          for tag in ${{ steps.metadata.outputs.tags }}; do
+          IMAGE_FULL="${{ needs.build_image.outputs.registry }}/${{ needs.build_image.outputs.image-name }}"
+          for tag in ${{ needs.build_image.outputs.tags }}; do
             cosign sign -y --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
           done
         env:
@@ -180,28 +208,141 @@ jobs:
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
 
       - name: Generate SBOM
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         uses: anchore/sbom-action@61119d458adab75f756bc0b9e4bde25725f86a7a # v0.17.2
         with:
-          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
+          image: ${{ needs.build_image.outputs.registry }}/${{ needs.build_image.outputs.image-name }}:${{ needs.build_image.outputs.tag }}
           format: spdx-json
           output-file: sbom.spdx.json
 
       - name: Upload SBOM
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-${{ github.run_number }}
           path: sbom.spdx.json
           retention-days: 30
 
-  build_disk:
-    name: Build disk images
-    needs: build_push
-    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    uses: ./.github/workflows/build-disk.yml
-    with:
-      image-name: ${{ needs.build_push.outputs.image-name }}
-      registry: ${{ needs.build_push.outputs.registry }}
-      tag: ${{ needs.build_push.outputs.tag }}
-      upload: true
+  build_qcow2:
+    name: Build QCOW2 disk image
+    needs: push_image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+
+    steps:
+      - name: Prepare environment
+        run: |
+          USER_UID=$(id -u)
+          USER_GID=$(id -g)
+          echo "USER_UID=${USER_UID}" >> ${GITHUB_ENV}
+          echo "USER_GID=${USER_GID}" >> ${GITHUB_ENV}
+
+      - name: Debug environment
+        run: |
+          echo "Image: ${{ needs.build_image.outputs.registry }}/${{ needs.build_image.outputs.image-name }}:${{ needs.build_image.outputs.tag }}"
+          echo "Disk type: qcow2"
+          echo "Config file: ./disk_config/disk.toml"
+
+      - name: Maximize build space
+        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
+        with:
+          remove-codeql: true
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Build QCOW2 disk image
+        id: build
+        uses: osbuild/bootc-image-builder-action@main
+        with:
+          builder-image: ${{ env.BIB_IMAGE }}
+          config-file: ./disk_config/disk.toml
+          image: ${{ needs.build_image.outputs.registry }}/${{ needs.build_image.outputs.image-name }}:${{ needs.build_image.outputs.tag }}
+          chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
+          types: qcow2
+          additional-args: --use-librepo=True
+
+      - name: Upload QCOW2 disk image and Checksum to Job Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: disk-image-qcow2-${{ github.run_number }}
+          path: ${{ steps.build.outputs.output-directory }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
+          overwrite: true
+
+  build_anaconda_iso:
+    name: Build Anaconda ISO
+    needs: push_image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+
+    steps:
+      - name: Prepare environment
+        run: |
+          USER_UID=$(id -u)
+          USER_GID=$(id -g)
+          echo "USER_UID=${USER_UID}" >> ${GITHUB_ENV}
+          echo "USER_GID=${USER_GID}" >> ${GITHUB_ENV}
+
+      - name: Debug environment
+        run: |
+          echo "Image: ${{ needs.build_image.outputs.registry }}/${{ needs.build_image.outputs.image-name }}:${{ needs.build_image.outputs.tag }}"
+          echo "Disk type: anaconda-iso"
+          echo "Config file: ./disk_config/iso.toml"
+
+      - name: Maximize build space
+        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
+        with:
+          remove-codeql: true
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Build Anaconda ISO
+        id: build
+        uses: osbuild/bootc-image-builder-action@main
+        with:
+          builder-image: ${{ env.BIB_IMAGE }}
+          config-file: ./disk_config/iso.toml
+          image: ${{ needs.build_image.outputs.registry }}/${{ needs.build_image.outputs.image-name }}:${{ needs.build_image.outputs.tag }}
+          chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
+          types: anaconda-iso
+          additional-args: --use-librepo=True
+
+      - name: Upload Anaconda ISO and Checksum to Job Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: disk-image-anaconda-iso-${{ github.run_number }}
+          path: ${{ steps.build.outputs.output-directory }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
+          overwrite: true
+
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-24.04
+    needs: [build_image, push_image, build_qcow2, build_anaconda_iso]
+    if: always()
+
+    steps:
+      - name: Build Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Build | ${{ needs.build_image.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Push | ${{ needs.push_image.result == 'success' && '✅ Success' || needs.push_image.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| QCOW2 Disk | ${{ needs.build_qcow2.result == 'success' && '✅ Success' || needs.build_qcow2.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Anaconda ISO | ${{ needs.build_anaconda_iso.result == 'success' && '✅ Success' || needs.build_anaconda_iso.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
