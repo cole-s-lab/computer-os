@@ -192,118 +192,10 @@ jobs:
       #     path: sbom.spdx.json
       #     retention-days: 30
 
-  build_qcow2:
-    name: Build QCOW2 disk image
-    needs: build_and_push_image
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-
-    permissions:
-      contents: read
-      packages: read
-      id-token: write
-
-    steps:
-      - name: Prepare environment
-        run: |
-          USER_UID=$(id -u)
-          USER_GID=$(id -g)
-          echo "USER_UID=${USER_UID}" >> ${GITHUB_ENV}
-          echo "USER_GID=${USER_GID}" >> ${GITHUB_ENV}
-
-      - name: Debug environment
-        run: |
-          echo "Image: ${{ needs.build_and_push_image.outputs.registry }}/${{ needs.build_and_push_image.outputs.image-name }}:${{ needs.build_and_push_image.outputs.tag }}"
-          echo "Disk type: qcow2"
-          echo "Config file: ./disk_config/disk.toml"
-
-      - name: Maximize build space
-        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
-        with:
-          remove-codeql: true
-
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - name: Build QCOW2 disk image
-        id: build
-        uses: osbuild/bootc-image-builder-action@main
-        with:
-          builder-image: ${{ env.BIB_IMAGE }}
-          config-file: ./disk_config/disk.toml
-          image: ${{ needs.build_and_push_image.outputs.registry }}/${{ needs.build_and_push_image.outputs.image-name }}:${{ needs.build_and_push_image.outputs.tag }}
-          chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
-          types: qcow2
-          additional-args: --use-librepo=True
-
-      - name: Upload QCOW2 disk image and Checksum to Job Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: disk-image-qcow2-${{ github.run_number }}
-          path: ${{ steps.build.outputs.output-directory }}
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 6
-          overwrite: true
-
-  build_anaconda_iso:
-    name: Build Anaconda ISO
-    needs: build_and_push_image
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-
-    permissions:
-      contents: read
-      packages: read
-      id-token: write
-
-    steps:
-      - name: Prepare environment
-        run: |
-          USER_UID=$(id -u)
-          USER_GID=$(id -g)
-          echo "USER_UID=${USER_UID}" >> ${GITHUB_ENV}
-          echo "USER_GID=${USER_GID}" >> ${GITHUB_ENV}
-
-      - name: Debug environment
-        run: |
-          echo "Image: ${{ needs.build_and_push_image.outputs.registry }}/${{ needs.build_and_push_image.outputs.image-name }}:${{ needs.build_and_push_image.outputs.tag }}"
-          echo "Disk type: anaconda-iso"
-          echo "Config file: ./disk_config/iso.toml"
-
-      - name: Maximize build space
-        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
-        with:
-          remove-codeql: true
-
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - name: Build Anaconda ISO
-        id: build
-        uses: osbuild/bootc-image-builder-action@main
-        with:
-          builder-image: ${{ env.BIB_IMAGE }}
-          config-file: ./disk_config/iso.toml
-          image: ${{ needs.build_and_push_image.outputs.registry }}/${{ needs.build_and_push_image.outputs.image-name }}:${{ needs.build_and_push_image.outputs.tag }}
-          chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
-          types: anaconda-iso
-          additional-args: --use-librepo=True
-
-      - name: Upload Anaconda ISO and Checksum to Job Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: disk-image-anaconda-iso-${{ github.run_number }}
-          path: ${{ steps.build.outputs.output-directory }}
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 6
-          overwrite: true
-
   summary:
     name: Build Summary
     runs-on: ubuntu-24.04
-    needs: [build_and_push_image, build_qcow2, build_anaconda_iso]
+    needs: [build_and_push_image]
     if: always()
 
     steps:
@@ -314,5 +206,3 @@ jobs:
           echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Container Build & Push | ${{ needs.build_and_push_image.result == 'success' && '✅ Success' || needs.build_and_push_image.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| QCOW2 Disk | ${{ needs.build_qcow2.result == 'success' && '✅ Success' || needs.build_qcow2.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Anaconda ISO | ${{ needs.build_anaconda_iso.result == 'success' && '✅ Success' || needs.build_anaconda_iso.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
