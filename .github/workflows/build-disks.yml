@@ -30,7 +30,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.registry_package.package_type == 'container' &&
       github.event.registry_package.namespace == github.repository_owner &&
-      github.event.registry_package.name == env.IMAGE_NAME)
+      github.event.registry_package.name == github.event.repository.name)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
@@ -99,7 +99,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.registry_package.package_type == 'container' &&
       github.event.registry_package.namespace == github.repository_owner &&
-      github.event.registry_package.name == env.IMAGE_NAME)
+      github.event.registry_package.name == github.event.repository.name)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 
