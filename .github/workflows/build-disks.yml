@@ -4,14 +4,22 @@ name: Build Disk Images
 on:
   registry_package:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The container image tag to build disk images from'
+        required: true
+        default: 'latest'
+        type: string
 
 env:
   IMAGE_NAME: "${{ github.event.repository.name }}"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
   BIB_IMAGE: "ghcr.io/lorbuschris/bootc-image-builder:20250608"
+  IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.registry_package.package_version.version }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.registry_package.package_version.version }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ env.IMAGE_TAG }}
   cancel-in-progress: true
 
 jobs:
@@ -19,9 +27,10 @@ jobs:
     name: Build QCOW2 disk image
     # Only run on container packages from this repository
     if: >-
-      github.event.registry_package.package_type == 'container' &&
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.registry_package.package_type == 'container' &&
       github.event.registry_package.namespace == github.repository_owner &&
-      github.event.registry_package.name == env.IMAGE_NAME
+      github.event.registry_package.name == env.IMAGE_NAME)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
@@ -40,7 +49,7 @@ jobs:
 
       - name: Debug environment
         run: |
-          echo "Image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.registry_package.package_version.version }}"
+          echo "Image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
           echo "Disk type: qcow2"
           echo "Config file: ./disk_config/disk.toml"
 
@@ -60,7 +69,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull container image
-        run: podman pull ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.registry_package.package_version.version }}
+        run: podman pull ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Build QCOW2 disk image
         id: build
@@ -68,7 +77,7 @@ jobs:
         with:
           builder-image: ${{ env.BIB_IMAGE }}
           config-file: ./disk_config/disk.toml
-          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.registry_package.package_version.version }}
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
           types: qcow2
           additional-args: --use-librepo=True
@@ -87,9 +96,10 @@ jobs:
     name: Build Anaconda ISO
     # Only run on container packages from this repository
     if: >-
-      github.event.registry_package.package_type == 'container' &&
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.registry_package.package_type == 'container' &&
       github.event.registry_package.namespace == github.repository_owner &&
-      github.event.registry_package.name == env.IMAGE_NAME
+      github.event.registry_package.name == env.IMAGE_NAME)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 
@@ -108,7 +118,7 @@ jobs:
 
       - name: Debug environment
         run: |
-          echo "Image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.registry_package.package_version.version }}"
+          echo "Image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
           echo "Disk type: anaconda-iso"
           echo "Config file: ./disk_config/iso.toml"
 
@@ -128,7 +138,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull container image
-        run: podman pull ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.registry_package.package_version.version }}
+        run: podman pull ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Build Anaconda ISO
         id: build
@@ -136,7 +146,7 @@ jobs:
         with:
           builder-image: ${{ env.BIB_IMAGE }}
           config-file: ./disk_config/iso.toml
-          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.registry_package.package_version.version }}
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
           types: anaconda-iso
           additional-args: --use-librepo=True
