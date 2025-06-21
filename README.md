@@ -1,78 +1,16 @@
-# image-template
-
-# Purpose
-
-This repository is meant to be a template for building your own custom [bootc](https://github.com/bootc-dev/bootc) image. This template is the recommended way to make customizations to any image published by the Universal Blue Project:
-- Products: [Aurora](https://getaurora.dev/), [Bazzite](https://bazzite.gg/), [Bluefin](https://projectbluefin.io/), [uCore](https://projectucore.io/)
-- Base images: [main](https://github.com/ublue-os/main/) - the product images build on these and may be a better starting point depending on what you want. 
-
-or any other base image if you want to start from scratch:
-
-- Fedora: `quay.io/fedora/fedora-bootc:41`
-- CentOS Stream 10: `quay.io/centos-bootc/centos-bootc:stream10`
-
-This template includes a Containerfile and a Github workflow for building the container image, signing, and proper metadata to be listed on [artifacthub](https://artifacthub.io/). As soon as the workflow is enabled in your repository, it will build the container image and push it to the Github Container Registry.
-
-# Prerequisites
-
-Working knowledge in the following topics:
-
-- Containers
-  - https://www.youtube.com/watch?v=SnSH8Ht3MIc
-  - https://www.mankier.com/5/Containerfile
-- bootc
-  - https://bootc-dev.github.io/bootc/
-- Fedora Silverblue (and other Fedora Atomic variants)
-  - https://docs.fedoraproject.org/en-US/fedora-silverblue/
-- Github Workflows
-  - https://docs.github.com/en/actions/using-workflows
-
-# Video Tutorial
-
-TesterTech has made a tutorial video, check it out: 
-
-[![Video Tutorial](https://img.youtube.com/vi/IxBl11Zmq5w/0.jpg)](https://www.youtube.com/watch?v=IxBl11Zmq5wE)
-
-# How to Use
-
-## Template
-
-Select `Use this Template` and create a new repository from it. To enable the workflows, you may need to go the `Actions` tab of the new repository and click to enable workflows.
-
-## Containerfile
-
-This file defines the operations used to customize the selected image. It contains examples of possible modifications, including how to:
-- change the upstream from which the custom image is derived
-- add additional RPM packages
-- add binaries as a layer from other images
-
-## Building disk images
-
-This template provides an out of the box workflow for creating ISO and other disk images for your custom OCI image which can be used to directly install onto your machines.
-
-This template provides a way to upload the disk images that is generated from the workflow to a S3 bucket or it will be available as an artifact from the job. To upload to S3 we use a tool called [rclone](https://rclone.org/) which is able to use [many S3 providers](https://rclone.org/s3/). For more details on how to configure this see the details [below](#build-isoyml).
+# Cole's Lab Computer OS
 
 ## Workflows
 
 ### build.yml
 
-This workflow creates your custom OCI image and publishes it to the Github Container Registry (GHCR). By default, the image name will match the Github repository name.
+This workflow creates your custom OCI image and publishes it to the Github Container Registry (GHCR).
 
 ### build-disk.yml
 
-This workflow creates a disk images from your OCI image by utilizing the [bootc-image-builder](https://osbuild.org/docs/bootc/). In order to use this workflow you must complete the following steps:
+This workflow creates a disk images from your OCI image by utilizing the [bootc-image-builder](https://osbuild.org/docs/bootc/).
 
-- Modify `disk_config/iso.toml` to point to your custom container image before generating an ISO image.
-- If you changed your image name from the default in `build.yml` then in the `build-disk.yml` file edit the `IMAGE_REGISTRY`, `IMAGE_NAME` and `DEFAULT_TAG` environment variables with the correct values. If you did not make changes, skip this step.
-- Finally, if you want to upload your disk images to S3 then you will need to add your S3 configuration to the repository's Action secrets. This can be found by going to your repository settings, under `Secrets and Variables` -> `Actions`. You will need to add the following
-  - `S3_PROVIDER` - Must match one of the values from the [supported list](https://rclone.org/s3/)
-  - `S3_BUCKET_NAME` - Your unique bucket name
-  - `S3_ACCESS_KEY_ID` - It is recommended that you make a separate key just for this workflow
-  - `S3_SECRET_ACCESS_KEY` - See above.
-  - `S3_REGION` - The region your bucket lives in. If you do not know then set this value to `auto`.
-  - `S3_ENDPOINT` - This value will be specific to the bucket as well.
-
-Once the workflow is done, you'll find the disk images either in your S3 bucket or as part of the summary under `Artifacts` after the workflow is completed.
+Once the workflow is done, you'll find the disk images in the bucket configured after the workflow is completed.
 
 #### Container Signing
 
