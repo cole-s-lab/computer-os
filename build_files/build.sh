@@ -19,7 +19,7 @@ dnf5 install -y \
   butane \
   coreos-installer
 
-dn5 clean -y
+dnf5 clean -y
 
 # Use a COPR Example:
 #
