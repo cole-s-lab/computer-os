@@ -2,8 +2,6 @@
 
 set -ouex pipefail
 
-dnf5 update -y
-
 ### Install packages
 
 # Packages can be installed from any enabled yum repo on the image.
