@@ -58,7 +58,7 @@ chmod +x install-opentofu.sh
 cd /
 
 # Optional Emacs dependencies
-dnf5 instally -y \
+dnf5 install -y \
   aspell \
   aspell-en \
   fd-find \
