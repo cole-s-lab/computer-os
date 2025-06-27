@@ -9,7 +9,9 @@ set -ouex pipefail
 # List of rpmfusion packages can be found here:
 # https://mirrors.rpmfusion.org/mirrorlist?path=free/fedora/updates/39/x86_64/repoview/index.html&protocol=https&redirect=1
 
-mkdir -p /usr/local/lib # Required for global pip installs
+# linked to /usr/local required for npm and pip installs
+mkdir /var/usrlocal
+mkdir /var/roothome
 
 # Developer tools
 dnf5 install -y \
@@ -27,7 +29,9 @@ dnf5 install -y \
   cargo \
   golang \
   ruby-devel \
-  rubygems
+  rubygems \
+  clang \
+  clang-tools-extra
 
 # Text editors
 dnf5 install -y \
@@ -37,6 +41,7 @@ dnf5 install -y \
 # CLI/TUI tools
 dnf5 copr enable atim/lazygit -y
 dnf5 install -y \
+  cmake \
   direnv \
   htop \
   lazygit \
@@ -44,6 +49,16 @@ dnf5 install -y \
   make \
   tmux
 dnf5 copr disable atim/lazygit -y
+
+# Aider must be installed using python3.12 as of 2025-06-26
+dnf5 install -y python3.12
+pip --python /usr/bin/python3.12 \
+  install --no-cache-dir \
+  aider-chat \
+  playwright
+
+dnf5 install -y \
+  chromium
 
 # Random utils
 dnf5 install -y \
@@ -64,9 +79,9 @@ dnf5 install -y \
   aspell \
   aspell-en \
   fd-find \
-  hunspell \
-  hunspell-en-US \
-  ripgrep
+  ripgrep \
+  spellcheck \
+  sqlite
 
 pip install --no-cache-dir \
   black \
@@ -75,7 +90,7 @@ pip install --no-cache-dir \
   python-lsp-server
 
 npm install -g \
-  docker-language-server-nodejs \
+  dockerfile-language-server-nodejs \
   eslint \
   typescript-language-server \
   typescript \
