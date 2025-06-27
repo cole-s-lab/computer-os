@@ -49,7 +49,6 @@ dnf5 install -y \
   butane \
   stow
 
-mkdir -p /tmp/
 cd /tmp
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://get.opentofu.org/install-opentofu.sh \
@@ -57,8 +56,6 @@ curl --proto '=https' --tlsv1.2 -fsSL \
 chmod +x install-opentofu.sh
 ./install-opentofu.sh --install-method rpm
 cd /
-rm -rf /tmp/
-mkdir -p /tmp/
 
 # Optional Emacs dependencies
 dnf5 instally -y \
