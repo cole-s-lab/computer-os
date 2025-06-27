@@ -80,7 +80,7 @@ dnf5 install -y \
   aspell-en \
   fd-find \
   ripgrep \
-  spellcheck \
+  shellcheck \
   sqlite
 
 pip install --no-cache-dir \
