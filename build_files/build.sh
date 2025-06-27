@@ -25,7 +25,7 @@ dnf5 install -y \
   cargo \
   golang \
   ruby-devel \
-  rubygems \
+  rubygems
 
 # Text editors
 dnf5 install -y \
