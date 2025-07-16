@@ -13,10 +13,14 @@ set -ouex pipefail
 mkdir /var/usrlocal
 mkdir /var/roothome
 
+# Random system dependencies
+dnf5 install -y \
+  webkit2gtk4.0-devel
+
 # Developer tools
 dnf5 install -y \
   gcc \
-  git \
+  git
 
 # Programming languages
 dnf5 install -y \
@@ -47,7 +51,8 @@ dnf5 install -y \
   lazygit \
   just \
   make \
-  tmux
+  tmux \
+  minicom
 dnf5 copr disable atim/lazygit -y
 
 # Aider must be installed using python3.12 as of 2025-06-26
@@ -100,12 +105,10 @@ curl -o /etc/yum.repos.d/hashicorp.repo \
   https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
 dnf5 install -y terraform-ls
 
-# Use a COPR Example:
-#
-# dnf5 -y copr enable ublue-os/staging
-# dnf5 -y install package
-# Disable COPRs so they don't end up enabled on the final image:
-# dnf5 -y copr disable ublue-os/staging
+dnf5 install -y \
+  virt-manager \
+  virt-viewer
+
 
 #### Example for enabling a System Unit File
 
