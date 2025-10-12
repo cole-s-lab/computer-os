@@ -20,7 +20,8 @@ dnf5 install -y \
 # Developer tools
 dnf5 install -y \
   gcc \
-  git
+  git \
+  toolbox
 
 # Programming languages
 dnf5 install -y \
@@ -108,7 +109,6 @@ dnf5 install -y terraform-ls
 dnf5 install -y \
   virt-manager \
   virt-viewer
-
 
 #### Example for enabling a System Unit File
 
